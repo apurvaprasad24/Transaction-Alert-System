@@ -1,0 +1,28 @@
+spring:
+  kafka:
+    consumer:
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "com.alertsystem.model"
+
+kafka:
+  topics:
+    transactions: financial-transactions
+    alerts: transaction-alerts
+    audit: audit-log
+
+alert:
+  thresholds:
+    large-transaction: 10000.0
+    critical-transaction: 50000.0
+    max-transactions-per-minute: 5
+    round-amount-minimum: 1000.0
+    failure-count: 3
+
+simulator:
+  enabled: false
+
+logging:
+  level:
+    com.alertsystem: DEBUG
+    org.apache.kafka: WARN

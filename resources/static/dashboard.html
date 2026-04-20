@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Transaction Alert Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3e;
+    --text: #e2e8f0; --muted: #64748b; --green: #10b981;
+    --red: #ef4444; --amber: #f59e0b; --blue: #3b82f6; --purple: #8b5cf6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
+  header { padding: 18px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 8px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .status-bar { font-size: 11px; color: var(--muted); }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 20px 28px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .card .value { font-size: 28px; font-weight: 700; }
+  .card .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .c-green { color: var(--green); } .c-red { color: var(--red); }
+  .c-amber { color: var(--amber); } .c-blue { color: var(--blue); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 28px 20px; }
+  .card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 14px; }
+
+  /* Alert feed */
+  #alert-feed { max-height: 340px; overflow-y: auto; }
+  .alert-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .alert-row:last-child { border-bottom: none; }
+  .sev { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; white-space: nowrap; margin-top: 1px; }
+  .sev.CRITICAL { background: #3f1212; color: var(--red); }
+  .sev.HIGH     { background: #3f2a00; color: var(--amber); }
+  .sev.MEDIUM   { background: #1a2a3f; color: var(--blue); }
+  .sev.LOW      { background: #0f2a1f; color: var(--green); }
+  .alert-body { flex: 1; }
+  .alert-body .msg { font-size: 12px; line-height: 1.5; }
+  .alert-body .meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* Transaction feed */
+  #tx-feed { max-height: 340px; overflow-y: auto; }
+  .tx-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .tx-row:last-child { border-bottom: none; }
+  .tx-left .acc { font-weight: 600; font-size: 12px; }
+  .tx-left .det { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .tx-right .amt { font-weight: 700; font-size: 13px; }
+  .tx-right .ts  { font-size: 10px; color: var(--muted); text-align: right; margin-top: 2px; }
+
+  /* Severity chart */
+  #sev-chart { margin-top: 6px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .bar-label { width: 72px; font-size: 11px; color: var(--muted); }
+  .bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+  .bar-count { width: 32px; text-align: right; font-size: 11px; }
+
+  .empty { color: var(--muted); font-size: 12px; padding: 20px 0; text-align: center; }
+
+  /* Control bar */
+  .controls { padding: 0 28px 20px; display: flex; gap: 10px; }
+  button { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+           padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-family: inherit; }
+  button:hover { border-color: var(--blue); color: var(--blue); }
+  button.active { border-color: var(--green); color: var(--green); }
+</style>
+</head>
+<body>
+
+<header>
+  <div><span class="dot"></span><h1 style="display:inline">Transaction Alert Monitor</h1></div>
+  <div class="status-bar" id="status-bar">Connecting to http://localhost:8080 …</div>
+</header>
+
+<div class="controls">
+  <button id="btn-start" onclick="startPolling()">▶ Start Live</button>
+  <button onclick="triggerSimulation()">⚡ Run Simulation</button>
+  <button onclick="clearFeeds()">✕ Clear</button>
+  <span style="color:var(--muted);font-size:11px;margin-left:auto;align-self:center" id="last-refresh"></span>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">Transactions processed</div>
+    <div class="value c-blue" id="stat-processed">—</div>
+    <div class="sub">total since start</div>
+  </div>
+  <div class="card">
+    <div class="label">Alerts generated</div>
+    <div class="value c-amber" id="stat-alerts">—</div>
+    <div class="sub">across all rules</div>
+  </div>
+  <div class="card">
+    <div class="label">Critical alerts</div>
+    <div class="value c-red" id="stat-critical">—</div>
+    <div class="sub">highest severity</div>
+  </div>
+  <div class="card">
+    <div class="label">High alerts</div>
+    <div class="value c-amber" id="stat-high">—</div>
+    <div class="sub">requires attention</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h3>Live Alert Feed</h3>
+    <div id="alert-feed"><div class="empty">No alerts yet — run a simulation</div></div>
+  </div>
+  <div class="card">
+    <h3>Recent Transactions</h3>
+    <div id="tx-feed"><div class="empty">Waiting for transactions…</div></div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h3>Alerts by Severity</h3>
+    <div id="sev-chart">
+      <div class="bar-row"><span class="bar-label">CRITICAL</span><div class="bar-track"><div class="bar-fill" id="bar-critical" style="width:0%;background:var(--red)"></div></div><span class="bar-count" id="bc-critical">0</span></div>
+      <div class="bar-row"><span class="bar-label">HIGH</span><div class="bar-track"><div class="bar-fill" id="bar-high" style="width:0%;background:var(--amber)"></div></div><span class="bar-count" id="bc-high">0</span></div>
+      <div class="bar-row"><span class="bar-label">MEDIUM</span><div class="bar-track"><div class="bar-fill" id="bar-medium" style="width:0%;background:var(--blue)"></div></div><span class="bar-count" id="bc-medium">0</span></div>
+      <div class="bar-row"><span class="bar-label">LOW</span><div class="bar-track"><div class="bar-fill" id="bar-low" style="width:0%;background:var(--green)"></div></div><span class="bar-count" id="bc-low">0</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Streams Status</h3>
+    <div id="streams-status"><div class="empty">Not fetched yet</div></div>
+  </div>
+</div>
+
+<script>
+  const BASE = 'http://localhost:8080';
+  let pollingInterval = null;
+  const alertLog = [];
+  const txLog = [];
+
+  async function fetchStats() {
+    const res = await fetch(`${BASE}/api/stats`);
+    if (!res.ok) throw new Error('Stats fetch failed');
+    return res.json();
+  }
+
+  async function fetchStreams() {
+    const res = await fetch(`${BASE}/api/streams/status`);
+    if (!res.ok) throw new Error('Streams fetch failed');
+    return res.json();
+  }
+
+  async function fetchAlertCounts() {
+    const res = await fetch(`${BASE}/api/streams/alert-counts`);
+    if (!res.ok) throw new Error('Alert counts fetch failed');
+    return res.json();
+  }
+
+  function updateStats(data) {
+    const c = data.consumer || {};
+    const a = data.alerts || {};
+    document.getElementById('stat-processed').textContent = c.processedTransactions ?? '—';
+    document.getElementById('stat-alerts').textContent = a.total ?? '—';
+    document.getElementById('stat-critical').textContent = a.CRITICAL ?? 0;
+    document.getElementById('stat-high').textContent = a.HIGH ?? 0;
+
+    // Update bars
+    const total = (a.total || 1);
+    const keys = ['CRITICAL','HIGH','MEDIUM','LOW'];
+    const colors = { CRITICAL: 'var(--red)', HIGH: 'var(--amber)', MEDIUM: 'var(--blue)', LOW: 'var(--green)' };
+    keys.forEach(k => {
+      const v = a[k] || 0;
+      const pct = Math.min(100, Math.round((v / total) * 100));
+      document.getElementById('bar-' + k.toLowerCase()).style.width = pct + '%';
+      document.getElementById('bc-' + k.toLowerCase()).textContent = v;
+    });
+  }
+
+  function addAlertToFeed(type, severity, account, message, amount) {
+    alertLog.unshift({ type, severity, account, message, amount, time: new Date().toLocaleTimeString() });
+    if (alertLog.length > 30) alertLog.pop();
+    renderAlertFeed();
+  }
+
+  function addTxToFeed(account, amount, merchant, type) {
+    txLog.unshift({ account, amount, merchant, type, time: new Date().toLocaleTimeString() });
+    if (txLog.length > 30) txLog.pop();
+    renderTxFeed();
+  }
+
+  function renderAlertFeed() {
+    const el = document.getElementById('alert-feed');
+    if (!alertLog.length) { el.innerHTML = '<div class="empty">No alerts yet</div>'; return; }
+    el.innerHTML = alertLog.map(a => `
+      <div class="alert-row">
+        <span class="sev ${a.severity}">${a.severity}</span>
+        <div class="alert-body">
+          <div class="msg">${a.message}</div>
+          <div class="meta">${a.account} · ${a.type} · $${Number(a.amount).toLocaleString()} · ${a.time}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  function renderTxFeed() {
+    const el = document.getElementById('tx-feed');
+    if (!txLog.length) { el.innerHTML = '<div class="empty">Waiting…</div>'; return; }
+    el.innerHTML = txLog.map(t => `
+      <div class="tx-row">
+        <div class="tx-left">
+          <div class="acc">${t.account}</div>
+          <div class="det">${t.merchant} · ${t.type}</div>
+        </div>
+        <div class="tx-right">
+          <div class="amt">$${Number(t.amount).toLocaleString()}</div>
+          <div class="ts">${t.time}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  function updateStreamsStatus(data) {
+    const el = document.getElementById('streams-status');
+    const color = data.state === 'RUNNING' ? 'var(--green)' : 'var(--amber)';
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>
+        <span style="font-size:14px;font-weight:700;color:${color}">${data.state}</span>
+      </div>
+      <div style="color:var(--muted);font-size:12px">${data.description || ''}</div>
+      <div style="margin-top:14px;font-size:11px;color:var(--muted)">
+        Pipelines active:<br>
+        <span style="color:var(--text)">→ Volume per account (1-min window)</span><br>
+        <span style="color:var(--text)">→ High-value filter (&gt;$10k)</span><br>
+        <span style="color:var(--text)">→ Alert severity aggregation</span>
+      </div>`;
+  }
+
+  async function refresh() {
+    try {
+      const [stats, streams] = await Promise.all([fetchStats(), fetchStreams()]);
+      updateStats(stats);
+      updateStreamsStatus(streams);
+      document.getElementById('status-bar').textContent = `Connected · ${new Date().toLocaleTimeString()}`;
+      document.getElementById('last-refresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
+
+      // Synthesize demo alert entries from stats delta for the feed
+      const total = stats.alerts?.total || 0;
+      if (total > alertLog.length) {
+        const severities = ['CRITICAL','HIGH','MEDIUM','LOW'];
+        const types = ['LARGE_TRANSACTION','SUSPICIOUS_MERCHANT','RAPID_TRANSACTIONS','MULTIPLE_FAILURES','ROUND_AMOUNT'];
+        const accounts = ['ACC-001','ACC-002','ACC-003','ACC-004','ACC-005'];
+        const sev = severities[Math.floor(Math.random() * 3)];
+        const type = types[Math.floor(Math.random() * types.length)];
+        addAlertToFeed(type, sev, accounts[Math.floor(Math.random()*accounts.length)],
+          `${type.replace(/_/g,' ')} detected`, (Math.random()*80000+1000).toFixed(2));
+      }
+
+      // Simulate tx feed
+      const merchants = ['Amazon','Starbucks','Netflix','Apple Store','CryptoFast'];
+      const txTypes = ['DEBIT','CREDIT','TRANSFER'];
+      addTxToFeed(
+        'ACC-00' + (1+Math.floor(Math.random()*5)),
+        (Math.random()*10000+50).toFixed(2),
+        merchants[Math.floor(Math.random()*merchants.length)],
+        txTypes[Math.floor(Math.random()*txTypes.length)]
+      );
+
+    } catch (err) {
+      document.getElementById('status-bar').textContent = `⚠ Cannot reach ${BASE} — is the app running?`;
+    }
+  }
+
+  function startPolling() {
+    if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; document.getElementById('btn-start').textContent = '▶ Start Live'; document.getElementById('btn-start').classList.remove('active'); return; }
+    document.getElementById('btn-start').textContent = '⏸ Pause';
+    document.getElementById('btn-start').classList.add('active');
+    refresh();
+    pollingInterval = setInterval(refresh, 3000);
+  }
+
+  async function triggerSimulation() {
+    try {
+      await fetch(`${BASE}/api/simulate`, { method: 'POST' });
+      document.getElementById('status-bar').textContent = '⚡ Simulation triggered — watch the feeds';
+    } catch {
+      document.getElementById('status-bar').textContent = '⚠ Could not trigger simulation — is the app running?';
+    }
+  }
+
+  function clearFeeds() {
+    alertLog.length = 0; txLog.length = 0;
+    renderAlertFeed(); renderTxFeed();
+  }
+</script>
+</body>
+</html>

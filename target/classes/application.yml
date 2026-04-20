@@ -1,0 +1,78 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: transaction-alert-system
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        spring.json.add.type.headers: false
+
+    consumer:
+      group-id: alert-processor-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      enable-auto-commit: false
+      properties:
+        spring.json.trusted.packages: "com.alertsystem.model"
+        spring.json.use.type.headers: false
+
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
+      concurrency: 3
+
+# Kafka topic names
+kafka:
+  topics:
+    transactions: financial-transactions
+    alerts: transaction-alerts
+    audit: audit-log
+
+# Alert thresholds (easily tunable)
+alert:
+  thresholds:
+    large-transaction: 10000.0
+    critical-transaction: 50000.0
+    max-transactions-per-minute: 5
+    round-amount-minimum: 1000.0
+    failure-count: 3
+
+# Kafka Streams
+  kafka:
+    streams:
+      application-id: transaction-alert-streams
+      properties:
+        processing.guarantee: exactly_once_v2
+        commit.interval.ms: 1000
+        state.dir: /tmp/kafka-streams
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,kafkametrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.alertsystem: INFO
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
+  file:
+    name: logs/transaction-alerts.log
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %highlight(%-5level) %cyan(%logger{25}) - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
